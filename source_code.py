@@ -3,7 +3,7 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State
-import pandas_datareader.data as web # requires v0.9.0 or later
+import yfinance as yf
 from datetime import datetime
 import pandas as pd
 import os
@@ -55,8 +55,6 @@ app.layout = html.Div([
     )
 ])
 
-token = os.environ.get('IEX_API_KEY')
-
 @app.callback(
     Output('stock_graph', 'figure'),
     [Input('submit-button', 'n_clicks')],
@@ -71,8 +69,9 @@ def update_graph(n_clicks, stock_ticker, start_date, end_date):
     end = datetime.strptime(end_date[:10], '%Y-%m-%d')
     traces = []
     for tic in stock_ticker:
-        df = web.DataReader(tic,'iex',start,end,api_key=token)
-        traces.append({'x':df.index, 'y': df.close, 'name':tic})
+        stock = yf.Ticker(tic)
+        df = stock.history(start=start,end=end)
+        traces.append({'x':df.index, 'y': df['Close'], 'name':tic})
     fig = {
         'data': traces,
         'layout': {'title':', '.join(stock_ticker)+' Closing Prices'}
