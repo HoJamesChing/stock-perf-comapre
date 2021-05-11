@@ -7,6 +7,10 @@ import yfinance as yf
 from datetime import datetime
 import pandas as pd
 import os
+from stocker import Stocker
+import base64
+import matplotlib.pyplot as plt
+from io import BytesIO
 
 app = dash.Dash()
 server = app.server
@@ -52,9 +56,39 @@ app.layout = html.Div([
                 {'x': [1,2], 'y': [3,1]}
             ]
         }
-    )
+    ),
+    html.Div([
+        html.H1('Prediction'),
+        html.H3('Select a stock')
+    ]),
+    html.Div(
+        [
+            dcc.Dropdown(
+            id='pred-ticker',
+            options=dropdown_list,
+            value=['AAPL'],
+            multi = False
+        )
+        ],
+        style={'width':'30%','verticalAlign':'top','display':'inline-block'}
+    ),
+    html.Div([
+        html.Button(
+            id='pred-submit-button',
+            n_clicks=0,
+            children='See the prediction',
+            style={'fontSize':18, 'marginLeft':'30px'}
+        ),
+    ], style={'display':'inline-block'}),
+    html.Div([
+        html.Img(
+                id='stock-pred-img',
+                src=''
+            )
+    ])
 ])
 
+# The callback function that generates the original stock line graph
 @app.callback(
     Output('stock_graph', 'figure'),
     [Input('submit-button', 'n_clicks')],
@@ -77,6 +111,58 @@ def update_graph(n_clicks, stock_ticker, start_date, end_date):
         'layout': {'title':', '.join(stock_ticker)+' Closing Prices'}
     }
     return fig
+
+# Encode the matplotlib figure to html image
+def fig_to_uri(in_fig, close_all=True, **save_args):
+    # type: (plt.Figure) -> str
+    """
+    Save a figure as a URI
+    :param in_fig:
+    :return:
+    """
+    out_img = BytesIO()
+    in_fig.savefig(out_img, format='png', **save_args)
+    if close_all:
+        in_fig.clf()
+        plt.close('all')
+    out_img.seek(0)  # rewind file
+    encoded = base64.b64encode(out_img.read()).decode("ascii").replace("\n", "")
+    return "data:image/png;base64,{}".format(encoded)
+
+# The callback function that predicts tomorrow's close price of the chosen stock
+@app.callback(
+    Output('stock-pred-img','src'),
+    [Input('pred-submit-button','n_clicks')],
+    [State('pred-ticker','value')]
+)
+def predict_stock_price_fig(n_clicks,stock_ticker):
+    stockNo = stock_ticker
+    ticker = yf.Ticker(stockNo)
+    df = ticker.history(period='max')
+    df = df.reset_index()
+    stock = Stocker(stockNo,df)
+    future, fig = stock.create_prophet_model(days=1)
+    pred = round(future.loc[future.index[-1], 'yhat'],2)
+    out_url = fig_to_uri(fig) 
+    return out_url 
+
+
+
+# The callback function that generates the forecast graph of the chosen stock
+# @app.callback(
+#     Output('stock-pred','children'),
+#     [Input('pred-submit-button','n_clicks')],
+#     [State('pred-ticker','value')]
+# )
+# def predict_stock_price(n_clicks,stock_ticker):
+#     stockNo = stock_ticker
+#     ticker = yf.Ticker(stockNo)
+#     df = ticker.history(period='max')
+#     df = df.reset_index()
+#     stock = Stocker(stockNo,df)
+#     future, fig = stock.create_prophet_model(days=1)
+#     pred = round(future.loc[future.index[-1], 'yhat'],2)
+#     return f"Tomorrow's close price of {stockNo} is predicted as {pred}"
 
 if __name__ == '__main__':
     app.run_server()
